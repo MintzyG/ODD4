@@ -552,6 +552,7 @@ func (h *AuthHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
 			WithData(userResponses).
 			WithPagination(response.PaginationParams{Page: page, Limit: limit}, int64(totalPages)).
 			Send(w)
+		return
 	}
 
 	users, err := h.AuthService.AuthRepo.GetAllUsers()
