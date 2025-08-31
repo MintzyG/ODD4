@@ -92,11 +92,13 @@ func (s *AuthService) Register(email, password, name, last_name string, isUenf b
 		return err
 	}
 
-	go func() {
-		if err := s.SendVerificationEmail(user, verificationNumber); err != nil {
-			log.Printf("Failed to send verification email to %s: %v", user.Email, err)
-		}
-	}()
+	if viper.GetString("TEST_MODE") != "true" {
+		go func() {
+			if err := s.SendVerificationEmail(user, verificationNumber); err != nil {
+				log.Printf("Failed to send verification email to %s: %v", user.Email, err)
+			}
+		}()
+	}
 
 	return nil
 }

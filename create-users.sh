@@ -37,7 +37,7 @@ for i in $(seq 1 100); do
     FIRST_NAME=$(get_random_element "${FIRST_NAMES[@]}")
     LAST_NAME=$(get_random_element "${LAST_NAMES[@]}")
     EMAIL_DOMAIN=$(get_random_element "${EMAIL_DOMAINS[@]}")
-    EMAIL="${FIRST_NAME,,}.${LAST_NAME,,}.${i}@${EMAIL_DOMAIN}"
+    EMAIL="${FIRST_NAME,,}.${LAST_NAME,,}.${i}.sctirandom@${EMAIL_DOMAIN}"
     PASSWORD="password123"
     
     # Random UENF data
