@@ -10,6 +10,9 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./Database/create-db.sh:/docker-entrypoint-initdb.d/create-db.sh
     environment:
+      POSTGRES_PASSWORD: ${DATABASE_PASS}
+      POSTGRES_USER: postgres
+      POSTGRES_DATABASE: ${DATABASE}
       DATABASE_USER: ${DATABASE_USER}
       DATABASE_PASS: ${DATABASE_PASS}
       DATABASE: ${DATABASE}

@@ -120,11 +120,7 @@ var templateFuncs = template.FuncMap{
 }
 
 func (s *AuthService) SendVerificationEmail(user *models.User, verificationNumber int) error {
-	// Skip email sending in test mode
-	if os.Getenv("TEST_MODE") == "true" {
-		return nil
-	}
-
+	log.Println("Sending Email")
 	from := viper.GetString("SCTI_EMAIL")
 	password := viper.GetString("SCTI_APP_PASSWORD")
 

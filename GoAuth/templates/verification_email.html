@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Verificação de Conta</title>
+    <style>
+      body { margin:0; padding:0; background:#f3f4f6; font-family:Arial, Helvetica, sans-serif; }
+      .container { max-width:600px; margin:32px auto; background:#ffffff; border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; }
+      .header { background:#0f2a4d; color:#ffffff; padding:28px 20px; text-align:center; border-radius:12px 12px 0 0; }
+      .header h1 { margin:0; font-size:28px; font-weight:700; }
+      .header p { margin:8px 0 0; font-size:15px; line-height:20px; opacity:.9; }
+      .section { padding:24px 20px; text-align:center; }
+      .section h2 { font-size:20px; font-weight:600; margin:0; color:#111827; }
+      .section p { font-size:14px; color:#6b7280; margin:8px 0 0; }
+      .details { background:#f9fafb; border:1px solid #e5e7eb; margin:0 20px 16px; padding:16px; border-radius:8px; text-align:left; }
+      .details h3 { font-size:18px; font-weight:600; margin:0 0 12px; color:#111827; }
+      .details ol { margin:0; padding-left:20px; font-size:14px; color:#374151; line-height:22px; }
+      .code-box { margin:16px 0 8px; text-align:center; flex-wrap:wrap; }
+      .digit { display:inline-block; width:50px; height:50px; line-height:50px; text-align:center; margin:6px; border:2px solid #0f2a4d; border-radius:8px; font-size:20px; font-weight:700; color:#0f2a4d; font-family:monospace; vertical-align:middle; }
+      .hint { font-size:13px; color:#6b7280; margin-bottom:20px; }
+      .info { background:#fff7ed; border-left:5px solid #f59e0b; margin:0 20px 24px; padding:14px 16px; border-radius:8px; font-size:13px; color:#374151; text-align:left; }
+      .info h3 { font-size:16px; font-weight:600; margin:0 0 8px; color:#0f172a; }
+      .info ul { margin:0; padding-left:18px; line-height:20px; }
+      .footer { background:#153a66; color:#ffffff; text-align:center; font-size:12px; padding:16px; border-radius:0 0 12px 12px; }
+      .footer p { margin:0; }
+      .footer .muted { opacity:.75; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <div class="header">
+        <h1>Verificação de Conta</h1>
+        <p>Confirme seu endereço de e-mail</p>
+      </div>
+
+      <!-- Saudação -->
+      <div class="section">
+        <h2>Olá, {{.UserName}}!</h2>
+        <p>Para completar seu cadastro, confirme seu endereço de e-mail.</p>
+      </div>
+
+      <!-- Código de Verificação -->
+      <div class="section">
+        <h2>Seu Código de Verificação</h2>
+        <div class="code-box">
+          <span class="digit">{{substr .VerificationCode 0 1}}</span>
+          <span class="digit">{{substr .VerificationCode 1 2}}</span>
+          <span class="digit">{{substr .VerificationCode 2 3}}</span>
+          <span class="digit">{{substr .VerificationCode 3 4}}</span>
+          <span class="digit">{{substr .VerificationCode 4 5}}</span>
+          <span class="digit">{{substr .VerificationCode 5 6}}</span>
+        </div>
+        <div class="hint">Digite este código na página de verificação</div>
+      </div>
+
+      <!-- Como verificar -->
+      <div class="details">
+        <h3>Como verificar</h3>
+        <ol>
+          <li>Acesse a página de verificação em nosso site</li>
+          <li>Digite o código de 6 dígitos mostrado acima</li>
+          <li>Clique em "Verificar E-mail" para completar o processo</li>
+        </ol>
+      </div>
+
+      <!-- Informações Importantes -->
+      <div class="info">
+        <h3>Informações Importantes</h3>
+        <ul>
+          <li>Este código é válido por 15 minutos</li>
+          <li>Não compartilhe este código com ninguém</li>
+          <li>Se você não solicitou esta verificação, ignore este e-mail</li>
+          <li>Você pode solicitar um novo código se necessário</li>
+        </ul>
+      </div>
+
+      <!-- Footer -->
+      <div class="footer">
+        <p>Obrigado por se inscrever! Nos vemos no evento.</p>
+        <p class="muted">© 2025 SCTI. Todos os direitos reservados.</p>
+      </div>
+    </div>
+  </body>
+</html>

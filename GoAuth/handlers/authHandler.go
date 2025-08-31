@@ -63,7 +63,8 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.Created().WithModule("auth").WithData(map[string]string{"access_token": acess_token, "refresh_token": refresh})
+	// TODO: ADD ERROR STATE IF MISSING SEND
+	response.Created().WithModule("auth").WithData(map[string]string{"access_token": acess_token, "refresh_token": refresh}).Send(w)
 }
 
 type UserLoginRequest struct {
@@ -97,7 +98,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.OK().WithModule("auth").WithData(map[string]string{"access_token": acess_token, "refresh_token": refresh})
+	response.OK().WithModule("auth").WithData(map[string]string{"access_token": acess_token, "refresh_token": refresh}).Send(w)
 }
 
 // Logout godoc

@@ -2,6 +2,7 @@ package main
 
 import (
 	"GoAuth/handlers"
+	mw "GoAuth/middleware"
 	"GoAuth/models"
 	"GoAuth/repos"
 	"GoAuth/services"
@@ -25,6 +26,9 @@ func Migrate() {
 	err := DB.AutoMigrate(
 		&models.User{},
 		&models.UserPass{},
+		&models.UserVerification{},
+		&models.AdminStatus{},
+		&models.RefreshToken{},
 	)
 	if err != nil {
 		log.Fatalf("migrations failed: %v", err)
@@ -64,15 +68,16 @@ func main() {
 	authHandler := handlers.NewAuthHandler(authService)
 
 	mux := http.NewServeMux()
+	authMiddleware := mw.AuthMiddleware(authService)
 
 	mux.HandleFunc("POST /v1/register", authHandler.Register)
 	mux.HandleFunc("POST /v1/login", authHandler.Login)
-	mux.HandleFunc("POST /v1/logout", authHandler.Logout)
-	mux.HandleFunc("POST /v1/revoke", authHandler.RevokeRefreshToken)
-	mux.HandleFunc("POST /v1/verify", authHandler.VerifyAccount)
-	mux.HandleFunc("POST /v1/forgot", authHandler.ForgotPassword)
-	mux.HandleFunc("POST /v1/change", authHandler.ChangePassword)
-	mux.HandleFunc("POST /v1/resend", authHandler.ResendVerificationCode)
+	mux.Handle("POST /v1/logout", authMiddleware(http.HandlerFunc(authHandler.Logout)))
+	mux.Handle("POST /v1/revoke", authMiddleware(http.HandlerFunc(authHandler.RevokeRefreshToken)))
+	mux.Handle("POST /v1/verify", authMiddleware(http.HandlerFunc(authHandler.VerifyAccount)))
+	mux.Handle("POST /v1/forgot", authMiddleware(http.HandlerFunc(authHandler.ForgotPassword)))
+	mux.Handle("POST /v1/change", authMiddleware(http.HandlerFunc(authHandler.ChangePassword)))
+	mux.Handle("POST /v1/resend", authMiddleware(http.HandlerFunc(authHandler.ResendVerificationCode)))
 	//mux.HandleFunc("POST /v1/verify-tokens", authHandler.VerifyJWT)
 
 	corsMux := cors.New(cors.Options{
