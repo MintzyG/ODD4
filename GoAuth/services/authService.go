@@ -21,6 +21,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/spf13/viper"
+	"github.com/ua-parser/uap-go/uaparser"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -354,9 +355,29 @@ func (s *AuthService) GenerateAccessToken(user models.User) (string, error) {
 	return token.SignedString(privateKey)
 }
 
+func getIPAddress(r *http.Request) string {
+	// Try X-Forwarded-For (may contain multiple IPs)
+	ip := r.Header.Get("X-Forwarded-For")
+	if ip != "" {
+		// If multiple IPs, take the first one
+		parts := strings.Split(ip, ",")
+		if len(parts) > 0 {
+			return strings.TrimSpace(parts[0])
+		}
+	}
+
+	// Try X-Real-IP (some proxies use this)
+	ip = r.Header.Get("X-Real-IP")
+	if ip != "" {
+		return ip
+	}
+
+	return r.RemoteAddr // last resort
+}
+
 func (s *AuthService) GenerateRefreshToken(userID string, r *http.Request) (string, error) {
 	userAgent := r.UserAgent()
-	ipAddress := r.Header.Get("X-Forwarded-For")
+	ipAddress := getIPAddress(r)
 
 	expirationTime := time.Now().Add(48 * time.Hour) // 2 days
 
@@ -537,4 +558,73 @@ func (s *AuthService) GetUsers(page, limit int) ([]models.User, int64, error) {
 
 func (s *AuthService) GetUserByID(userID string) (models.User, error) {
 	return s.AuthRepo.FindUserByID(userID)
+}
+
+var uaParser = uaparser.NewFromSaved()
+
+func (s *AuthService) RefreshTokens(refreshTokenString string, r *http.Request) (string, string, error) {
+	publicKeyPEM := []byte(viper.GetString("JWT_PUBLIC_KEY"))
+	publicKey, err := jwt.ParseRSAPublicKeyFromPEM(publicKeyPEM)
+	if err != nil {
+		return "", "", errors.New("failed to parse public key: " + err.Error())
+	}
+
+	token, err := jwt.Parse(refreshTokenString, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
+			return nil, errors.New("unexpected signing method for refresh token")
+		}
+		return publicKey, nil
+	})
+	if err != nil || !token.Valid {
+		return "", "", errors.New("invalid or expired refresh token")
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", "", errors.New("invalid refresh token claims")
+	}
+
+	userID, ok := claims["id"].(string)
+	if !ok {
+		return "", "", errors.New("missing user_id in refresh token")
+	}
+
+	storedToken, err := s.FindRefreshToken(userID, refreshTokenString)
+	if err != nil || storedToken == nil {
+		return "", "", errors.New("refresh token not found or revoked")
+	}
+
+	tokenUA, _ := claims["user_agent"].(string)
+	currentUA := r.UserAgent()
+
+	tokenClient := uaParser.Parse(tokenUA)
+	currentClient := uaParser.Parse(currentUA)
+
+	// Compare device family and browser family
+	if tokenClient.UserAgent.Family != "" && currentClient.UserAgent.Family != "" &&
+		tokenClient.UserAgent.Family != currentClient.UserAgent.Family ||
+		tokenClient.Device.Family != "" && currentClient.Device.Family != "" &&
+			tokenClient.Device.Family != currentClient.Device.Family {
+		return "", "", errors.New("refresh token used from another device or browser")
+	}
+
+	user, err := s.GetUserByID(userID)
+	if err != nil {
+		return "", "", err
+	}
+
+	newAccess, newRefresh, err := s.GenerateTokenPair(user, r)
+	if err != nil {
+		return "", "", err
+	}
+
+	if err := s.AuthRepo.DeleteRefreshToken(userID, refreshTokenString); err != nil {
+		return "", "", err
+	}
+
+	if err := s.AuthRepo.CreateRefreshToken(userID, newRefresh); err != nil {
+		return "", "", err
+	}
+
+	return newAccess, newRefresh, nil
 }

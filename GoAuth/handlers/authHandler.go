@@ -501,7 +501,7 @@ func (h *AuthHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
 			CreatedAt:      targetUser.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		}
 
-		response.OK().WithModule("auth").WithData(GetUsersResponse{Users: []UserResponse{userResponse}}).Send(w)
+		response.OK().WithModule("auth").WithData(userResponse).Send(w)
 		return
 	}
 
@@ -560,4 +560,21 @@ func (h *AuthHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.OK("retrieved all users").WithData(users).WithModule("auth").Send(w)
+}
+
+func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
+	refreshHeader := r.Header.Get("Refresh")
+	if refreshHeader == "" || !strings.HasPrefix(refreshHeader, "Bearer ") {
+		response.Unauthorized("refresh token required").WithModule("auth").Send(w)
+		return
+	}
+	refreshToken := strings.TrimPrefix(refreshHeader, "Bearer ")
+
+	access, refresh, err := h.AuthService.RefreshTokens(refreshToken, r)
+	if err != nil {
+		response.Unauthorized().AddTrace(err).WithModule("auth").Send(w)
+		return
+	}
+
+	response.OK().WithData(map[string]string{"access_token": access, "refresh_token": refresh}).WithModule("auth").Send(w)
 }
