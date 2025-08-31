@@ -5,6 +5,7 @@ import (
 	"GoAuth/models"
 	"GoAuth/services"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/MintzyG/GoResponse/response"
@@ -47,19 +48,19 @@ type UserRegisterRequest struct {
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var user models.UserRegister
 	if err := decodeRequestBody(r, &user); err != nil {
-		response.BadRequest().WithModule("auth").Send(w)
+		response.BadRequest().WithModule("auth").AddTrace(err).Send(w)
 		return
 	}
 
 	err := h.AuthService.Register(user.Email, user.Password, user.Name, user.LastName, user.IsUenf, user.UenfSemester)
 	if err != nil {
-		response.BadRequest().WithMessage("error registering user").AppendTrace(err).WithModule("auth").Send(w)
+		response.BadRequest().WithMsg("error registering user").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
 	acess_token, refresh, err := h.AuthService.Login(user.Email, user.Password, r)
 	if err != nil {
-		response.BadRequest().WithMessage("error trying to login").AppendTrace(err).WithModule("auth").Send(w)
+		response.BadRequest().WithMsg("error trying to login").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
@@ -88,13 +89,13 @@ type UserLoginRequest struct {
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var user models.UserLogin
 	if err := decodeRequestBody(r, &user); err != nil {
-		response.BadRequest().AppendTrace(err).WithModule("auth").Send(w)
+		response.BadRequest().AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
 	acess_token, refresh, err := h.AuthService.Login(user.Email, user.Password, r)
 	if err != nil {
-		response.Unauthorized().WithMessage("error trying to login").AppendTrace(err).WithModule("auth").Send(w)
+		response.Unauthorized().WithMsg("error trying to login").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
@@ -116,7 +117,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	user, err := getUserFromContext(h.AuthService.AuthRepo.FindUserByID, r)
 	if err != nil {
-		response.BadRequest().AppendTrace(ae.ErrContext, err).WithModule("auth").Send(w)
+		response.BadRequest().AddTrace(ae.ErrContext, err).WithModule("auth").Send(w)
 		return
 	}
 
@@ -125,11 +126,11 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 	err = h.AuthService.Logout(user.ID, refreshTokenString)
 	if err != nil {
-		response.Unauthorized().WithMessage("error trying to logout").AppendTrace(err).WithModule("auth").Send(w)
+		response.Unauthorized().WithMsg("error trying to logout").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
-	response.OK().WithMessage("logged out successfully").WithModule("auth").Send(w)
+	response.OK().WithMsg("logged out successfully").WithModule("auth").Send(w)
 }
 
 type RevokeTokenRequest struct {
@@ -154,28 +155,28 @@ type RevokeTokenRequest struct {
 func (h *AuthHandler) RevokeRefreshToken(w http.ResponseWriter, r *http.Request) {
 	user, err := getUserFromContext(h.AuthService.AuthRepo.FindUserByID, r)
 	if err != nil {
-		response.BadRequest().AppendTrace(ae.ErrContext, err).WithModule("auth").Send(w)
+		response.BadRequest().AddTrace(ae.ErrContext, err).WithModule("auth").Send(w)
 		return
 	}
 
 	var requestBody RevokeTokenRequest
 	if err := decodeRequestBody(r, &requestBody); err != nil {
-		response.BadRequest().AppendTrace(err).WithModule("auth").Send(w)
+		response.BadRequest().AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
 	if requestBody.Token == "" {
-		response.BadRequest().AppendTrace("refresh token to be revoked is required").WithModule("auth").Send(w)
+		response.BadRequest().AddTrace("refresh token to be revoked is required").WithModule("auth").Send(w)
 		return
 	}
 
 	err = h.AuthService.RevokeRefreshToken(user.ID, requestBody.Token)
 	if err != nil {
-		response.BadRequest().WithMessage("error revoking token").AppendTrace(err).WithModule("auth").Send(w)
+		response.BadRequest().WithMsg("error revoking token").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
-	response.OK().WithMessage("refresh token revoked successfully").WithModule("auth").Send(w)
+	response.OK().WithMsg("refresh token revoked successfully").WithModule("auth").Send(w)
 }
 
 type VerifyAccountRequest struct {
@@ -199,24 +200,24 @@ type VerifyAccountRequest struct {
 func (h *AuthHandler) VerifyAccount(w http.ResponseWriter, r *http.Request) {
 	user, err := getUserFromContext(h.AuthService.AuthRepo.FindUserByID, r)
 	if err != nil {
-		response.BadRequest().AppendTrace(ae.ErrContext, err).WithModule("auth").Send(w)
+		response.BadRequest().AddTrace(ae.ErrContext, err).WithModule("auth").Send(w)
 		return
 	}
 
 	var requestBody VerifyAccountRequest
 	if err := decodeRequestBody(r, &requestBody); err != nil {
-		response.BadRequest().AppendTrace(err).WithModule("auth").Send(w)
+		response.BadRequest().AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
 	if requestBody.Token == "" {
-		response.BadRequest().WithMessage("verification token is required").WithModule("auth").Send(w)
+		response.BadRequest().WithMsg("verification token is required").WithModule("auth").Send(w)
 		return
 	}
 
 	err = h.AuthService.VerifyUser(&user, requestBody.Token)
 	if err != nil {
-		response.BadRequest().WithMessage("error verifying user").AppendTrace(err).WithModule("auth").Send(w)
+		response.BadRequest().WithMsg("error verifying user").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
@@ -224,20 +225,20 @@ func (h *AuthHandler) VerifyAccount(w http.ResponseWriter, r *http.Request) {
 	refreshTokenString := strings.TrimPrefix(refreshHeader, "Bearer ")
 	err = h.AuthService.Logout(user.ID, refreshTokenString)
 	if err != nil {
-		response.BadRequest().WithMessage("error loggin out").AppendTrace(err).WithModule("auth").Send(w)
+		response.BadRequest().WithMsg("error loggin out").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
 	access_token, refresh_token, err := h.AuthService.GenerateTokenPair(user, r)
 	if err != nil {
-		response.BadRequest().WithMessage("error generating token pair").AppendTrace(err).WithModule("auth").Send(w)
+		response.BadRequest().WithMsg("error generating token pair").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
 	w.Header().Set("X-New-Access-Token", access_token)
 	w.Header().Set("X-New-Refresh-Token", refresh_token)
 
-	response.OK().WithMessage("account verified").WithModule("auth").Send(w)
+	response.OK().WithMsg("account verified").WithModule("auth").Send(w)
 }
 
 type ForgotPasswordRequest struct {
@@ -247,16 +248,16 @@ type ForgotPasswordRequest struct {
 func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	var req ForgotPasswordRequest
 	if err := decodeRequestBody(r, &req); err != nil {
-		response.BadRequest().AppendTrace(err).WithModule("auth").Send(w)
+		response.BadRequest().AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
 	if err := h.AuthService.InitiatePasswordReset(req.Email); err != nil {
-		response.BadRequest().WithMessage("error initiating password reset").AppendTrace(err).WithModule("auth").Send(w)
+		response.BadRequest().WithMsg("error initiating password reset").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
-	response.OK().WithMessage("password reset email sent").WithModule("auth").Send(w)
+	response.OK().WithMsg("password reset email sent").WithModule("auth").Send(w)
 }
 
 type ChangePasswordRequest struct {
@@ -281,13 +282,13 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	var secretKey string = viper.GetString("JWT_SECRET")
 	resetToken := r.URL.Query().Get("token")
 	if resetToken == "" {
-		response.BadRequest().WithMessage("missing reset token").WithModule("auth").Send(w)
+		response.BadRequest().WithMsg("missing reset token").WithModule("auth").Send(w)
 		return
 	}
 
 	var req ChangePasswordRequest
 	if err := decodeRequestBody(r, &req); err != nil {
-		response.BadRequest().WithMessage("missing reset token").WithModule("auth").Send(w)
+		response.BadRequest().WithMsg("missing reset token").WithModule("auth").Send(w)
 		return
 	}
 
@@ -297,16 +298,16 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil || !token.Valid || !claims.IsPasswordReset {
-		response.BadRequest().WithMessage("invalid or expired reset token").WithModule("auth").Send(w)
+		response.BadRequest().WithMsg("invalid or expired reset token").WithModule("auth").Send(w)
 		return
 	}
 
 	if err := h.AuthService.ChangePassword(claims.UserID, req.NewPassword); err != nil {
-		response.BadRequest().WithMessage("error changing password").WithModule("auth").Send(w)
+		response.BadRequest().WithMsg("error changing password").WithModule("auth").Send(w)
 		return
 	}
 
-	response.OK().WithMessage("password changed succesfuly").WithModule("auth").Send(w)
+	response.OK().WithMsg("password changed succesfuly").WithModule("auth").Send(w)
 }
 
 // ResendVerificationCode godoc
@@ -325,16 +326,16 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) ResendVerificationCode(w http.ResponseWriter, r *http.Request) {
 	user, err := getUserFromContext(h.AuthService.AuthRepo.FindUserByID, r)
 	if err != nil {
-		response.BadRequest().AppendTrace(ae.ErrContext, err).WithModule("auth").Send(w)
+		response.BadRequest().AddTrace(ae.ErrContext, err).WithModule("auth").Send(w)
 		return
 	}
 
 	if err := h.AuthService.ResendVerificationCode(&user); err != nil {
-		response.BadRequest().WithMessage("error resending verification code").AppendTrace(err).WithModule("auth").Send(w)
+		response.BadRequest().WithMsg("error resending verification code").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
-	response.OK().WithMessage("verification code sent").WithModule("auth").Send(w)
+	response.OK().WithMsg("verification code sent").WithModule("auth").Send(w)
 }
 
 // type SwitchEventCreatorStatusRequest struct {
@@ -435,3 +436,128 @@ func (h *AuthHandler) ResendVerificationCode(w http.ResponseWriter, r *http.Requ
 
 // 	handleSuccess(w, nil, "user name changed successfully", http.StatusOK)
 // }
+
+type UserResponse struct {
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	LastName       string `json:"last_name"`
+	Email          string `json:"email"`
+	IsVerified     bool   `json:"is_verified"`
+	IsEventCreator bool   `json:"is_event_creator"`
+	IsSuperUser    bool   `json:"is_super_user"`
+	IsUenf         bool   `json:"is_uenf"`
+	UenfSemester   int    `json:"uenf_semester"`
+	CreatedAt      string `json:"created_at"`
+}
+
+type GetUsersResponse struct {
+	Users      []UserResponse `json:"users"`
+	Pagination *struct {
+		Page       int   `json:"page"`
+		Limit      int   `json:"limit"`
+		Total      int64 `json:"total"`
+		TotalPages int   `json:"total_pages"`
+		HasNext    bool  `json:"has_next"`
+		HasPrev    bool  `json:"has_prev"`
+	} `json:"pagination,omitempty"`
+}
+
+// GetUsers godoc
+// @Summary      Get users
+// @Description  Get users with optional filters: ?id=123 for single user, ?page=1&limit=10 for pagination
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Security     Bearer
+// @Param        Authorization header string true "Bearer {access_token}"
+// @Param        Refresh header string true "Bearer {refresh_token}"
+// @Param        id query string false "Get specific user by ID"
+// @Param        page query int false "Page number (default: 1)"
+// @Param        limit query int false "Items per page (default: 10)"
+// @Success      200  {object}  NoMessageSuccessResponse{data=GetUsersResponse}
+// @Failure      400  {object}  AuthStandardErrorResponse
+// @Failure      401  {object}  AuthStandardErrorResponse
+// @Failure      403  {object}  AuthStandardErrorResponse
+// @Router       /users [get]
+func (h *AuthHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
+	// Check if requesting specific user by ID
+	if userID := r.URL.Query().Get("id"); userID != "" {
+		targetUser, err := h.AuthService.GetUserByID(userID)
+		if err != nil {
+			response.NotFound().WithMsg("user not found").AddTrace(err).WithModule("auth").Send(w)
+			return
+		}
+
+		userResponse := UserResponse{
+			ID:             targetUser.ID,
+			Name:           targetUser.Name,
+			LastName:       targetUser.LastName,
+			Email:          targetUser.Email,
+			IsVerified:     targetUser.IsVerified,
+			IsEventCreator: targetUser.IsEventCreator,
+			IsSuperUser:    targetUser.IsSuperUser,
+			IsUenf:         targetUser.IsUenf,
+			UenfSemester:   targetUser.UenfSemester,
+			CreatedAt:      targetUser.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		}
+
+		response.OK().WithModule("auth").WithData(GetUsersResponse{Users: []UserResponse{userResponse}}).Send(w)
+		return
+	}
+
+	// Parse pagination parameters
+	page := 1
+	limit := 10
+
+	var pageStr string
+	if pageStr = r.URL.Query().Get("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	var limitStr string
+	if limitStr = r.URL.Query().Get("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
+			limit = l
+		}
+	}
+
+	if pageStr != "" || limitStr != "" {
+		users, total, err := h.AuthService.GetUsers(page, limit)
+		if err != nil {
+			response.BadRequest().WithMsg("error retrieving users").AddTrace(err).WithModule("auth").Send(w)
+			return
+		}
+
+		userResponses := make([]UserResponse, len(users))
+		for i, u := range users {
+			userResponses[i] = UserResponse{
+				ID:             u.ID,
+				Name:           u.Name,
+				LastName:       u.LastName,
+				Email:          u.Email,
+				IsVerified:     u.IsVerified,
+				IsEventCreator: u.IsEventCreator,
+				IsSuperUser:    u.IsSuperUser,
+				IsUenf:         u.IsUenf,
+				UenfSemester:   u.UenfSemester,
+				CreatedAt:      u.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			}
+		}
+
+		totalPages := int((total + int64(limit) - 1) / int64(limit))
+		response.OK().
+			WithModule("auth").
+			WithData(userResponses).
+			WithPagination(response.PaginationParams{Page: page, Limit: limit}, int64(totalPages)).
+			Send(w)
+	}
+
+	users, err := h.AuthService.AuthRepo.GetAllUsers()
+	if err != nil {
+		response.InternalServerError("coudl'nt get all users").AddTrace(err).WithModule("auth").Send(w)
+		return
+	}
+	response.OK("retrieved all users").WithData(users).WithModule("auth").Send(w)
+}

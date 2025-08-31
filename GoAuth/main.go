@@ -78,6 +78,7 @@ func main() {
 	mux.Handle("POST /v1/forgot", authMiddleware(http.HandlerFunc(authHandler.ForgotPassword)))
 	mux.Handle("POST /v1/change", authMiddleware(http.HandlerFunc(authHandler.ChangePassword)))
 	mux.Handle("POST /v1/resend", authMiddleware(http.HandlerFunc(authHandler.ResendVerificationCode)))
+	mux.HandleFunc("GET /v1/users", authHandler.GetUsers)
 	//mux.HandleFunc("POST /v1/verify-tokens", authHandler.VerifyJWT)
 
 	corsMux := cors.New(cors.Options{

@@ -520,3 +520,11 @@ func (s *AuthService) ResendVerificationCode(user *models.User) error {
 
 	return nil
 }
+
+func (s *AuthService) GetUsers(page, limit int) ([]models.User, int64, error) {
+	return s.AuthRepo.GetUsers(page, limit)
+}
+
+func (s *AuthService) GetUserByID(userID string) (models.User, error) {
+	return s.AuthRepo.FindUserByID(userID)
+}

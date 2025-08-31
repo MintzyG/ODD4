@@ -223,3 +223,27 @@ func (r *AuthRepo) ChangeUserName(userID string, name, lastName string) error {
 		Update("name", name).
 		Update("last_name", lastName).Error
 }
+
+func (r *AuthRepo) GetUsers(page, limit int) ([]models.User, int64, error) {
+	var users []models.User
+	var total int64
+
+	if err := r.DB.Model(&models.User{}).Count(&total).Error; err != nil {
+		return nil, 0, errors.New("error counting users: " + err.Error())
+	}
+
+	offset := (page - 1) * limit
+	if err := r.DB.Offset(offset).Limit(limit).Order("created_at DESC").Find(&users).Error; err != nil {
+		return nil, 0, errors.New("error retrieving users: " + err.Error())
+	}
+
+	return users, total, nil
+}
+
+func (r *AuthRepo) GetAllUsers() ([]models.User, error) {
+	var users []models.User
+	if err := r.DB.Find(&users).Error; err != nil {
+		return nil, err
+	}
+	return users, nil
+}
