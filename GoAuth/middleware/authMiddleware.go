@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -16,7 +17,12 @@ import (
 func AuthMiddleware(authService *services.AuthService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			secretKey := viper.GetString("JWT_SECRET")
+			publicKeyPEM := []byte(viper.GetString("JWT_PUBLIC_KEY"))
+			publicKey, err := jwt.ParseRSAPublicKeyFromPEM(publicKeyPEM)
+			if err != nil {
+				u.SendError(w, []string{"failed to parse public key"}, "auth-middleware", http.StatusInternalServerError)
+				return
+			}
 
 			accessHeader := r.Header.Get("Authorization")
 			if accessHeader == "" {
@@ -37,39 +43,28 @@ func AuthMiddleware(authService *services.AuthService) func(http.Handler) http.H
 			}
 
 			if !strings.HasPrefix(refreshHeader, "Bearer ") {
-				u.SendError(w, []string{"refresh header format must be \"Bearer {token}\""}, "auth-middleware", http.StatusUnauthorized)
+				u.SendError(w, []string{"refresh header format must be Bearer {token}"}, "auth-middleware", http.StatusUnauthorized)
 				return
 			}
 			refreshTokenString := strings.TrimPrefix(refreshHeader, "Bearer ")
 
 			accessToken, accessTokenErr := jwt.ParseWithClaims(accessTokenString, &models.UserClaims{}, func(token *jwt.Token) (interface{}, error) {
-				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-					return nil, jwt.ErrSignatureInvalid
+				if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+					return nil, errors.New("unexpected signing method for access token")
 				}
-				return []byte(secretKey), nil
+				return publicKey, nil
 			})
 
 			refreshToken, refreshErr := jwt.ParseWithClaims(refreshTokenString, &jwt.MapClaims{}, func(token *jwt.Token) (interface{}, error) {
-				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-					return nil, jwt.ErrSignatureInvalid
+				if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+					return nil, errors.New("unexpected signing method for refresh token")
 				}
-				return []byte(secretKey), nil
+				return publicKey, nil
 			})
 
 			if accessTokenErr != nil && !strings.Contains(accessTokenErr.Error(), "token is expired") {
 				u.SendError(w, []string{"invalid access token: " + accessTokenErr.Error()}, "auth-middleware", http.StatusUnauthorized)
 				return
-			}
-
-			var accessClaims *models.UserClaims
-			var ok bool
-
-			if accessToken != nil {
-				accessClaims, ok = accessToken.Claims.(*models.UserClaims)
-				if !ok {
-					u.SendError(w, []string{"invalid access token claims"}, "auth-middleware", http.StatusUnauthorized)
-					return
-				}
 			}
 
 			if refreshErr != nil {
@@ -101,6 +96,7 @@ func AuthMiddleware(authService *services.AuthService) func(http.Handler) http.H
 			}
 
 			if accessToken != nil && accessToken.Valid {
+				accessClaims, _ := accessToken.Claims.(*models.UserClaims)
 				ctx := context.WithValue(r.Context(), models.UserContextValue, accessClaims)
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
@@ -112,7 +108,7 @@ func AuthMiddleware(authService *services.AuthService) func(http.Handler) http.H
 				return
 			}
 
-			newAccessToken, err := authService.GenerateAcessToken(user)
+			newAccessToken, err := authService.GenerateAccessToken(user)
 			if err != nil {
 				u.SendError(w, []string{"failed to generate new access token"}, "auth-middleware", http.StatusInternalServerError)
 				return
@@ -130,9 +126,8 @@ func AuthMiddleware(authService *services.AuthService) func(http.Handler) http.H
 			}
 
 			newAccessJWT, _ := jwt.ParseWithClaims(newAccessToken, &models.UserClaims{}, func(token *jwt.Token) (interface{}, error) {
-				return []byte(secretKey), nil
+				return publicKey, nil
 			})
-
 			newAccessClaims, _ := newAccessJWT.Claims.(*models.UserClaims)
 
 			w.Header().Set("X-New-Access-Token", newAccessToken)

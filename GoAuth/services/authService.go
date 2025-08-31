@@ -234,7 +234,7 @@ func (s *AuthService) Login(email, password string, r *http.Request) (string, st
 		return "", "", errors.New("invalid password")
 	}
 
-	accessToken, err := s.GenerateAcessToken(user)
+	accessToken, err := s.GenerateAccessToken(user)
 	if err != nil {
 		return "", "", err
 	}
@@ -298,7 +298,7 @@ func (s *AuthService) MakeJSONAdminMap(userID string) (string, error) {
 }
 
 func (s *AuthService) GenerateTokenPair(user models.User, r *http.Request) (string, string, error) {
-	accessToken, err := s.GenerateAcessToken(user)
+	accessToken, err := s.GenerateAccessToken(user)
 	if err != nil {
 		return "", "", err
 	}
@@ -315,7 +315,7 @@ func (s *AuthService) GenerateTokenPair(user models.User, r *http.Request) (stri
 	return accessToken, refreshToken, nil
 }
 
-func (s *AuthService) GenerateAcessToken(user models.User) (string, error) {
+func (s *AuthService) GenerateAccessToken(user models.User) (string, error) {
 	adminMap, err := s.MakeJSONAdminMap(user.ID)
 	if err != nil && err.Error() != "user has no admin status" {
 		return "", err
@@ -325,21 +325,21 @@ func (s *AuthService) GenerateAcessToken(user models.User) (string, error) {
 		adminMap = "{}"
 	}
 
-	var refreshExpireTime int
-	if os.Getenv("TEST_MODE") == "true" {
-		refreshExpireTime, err = strconv.Atoi(os.Getenv("TEST_REFRESH_EXPIRE_TIME"))
-		if err != nil {
-			return "", errors.New("coudln't parse TEST_REFRESH_EXIRE_TIME: " + err.Error())
-		}
-	} else {
-		refreshExpireTime, err = strconv.Atoi(os.Getenv("REFRESH_EXPIRE_TIME"))
-		if err != nil {
-			return "", errors.New("coudln't parse REFRESH_EXIRE_TIME: " + err.Error())
-		}
+	expireMinutes := viper.GetInt("ACCESS_EXPIRE_TIME")
+	if expireMinutes == 0 {
+		expireMinutes = 60 // default 1 hour
 	}
 
-	expirationTime := time.Now().Add(time.Duration(refreshExpireTime) * time.Minute)
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+	expirationTime := time.Now().Add(time.Duration(expireMinutes) * time.Minute)
+
+	// Load RSA private key from Viper
+	privateKeyPEM := []byte(viper.GetString("JWT_PRIVATE_KEY"))
+	privateKey, err := jwt.ParseRSAPrivateKeyFromPEM(privateKeyPEM)
+	if err != nil {
+		return "", errors.New("failed to parse private key: " + err.Error())
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
 		"id":               user.ID,
 		"name":             user.Name,
 		"last_name":        user.LastName,
@@ -350,25 +350,33 @@ func (s *AuthService) GenerateAcessToken(user models.User) (string, error) {
 		"is_super":         user.IsSuperUser,
 		"exp":              expirationTime.Unix(),
 	})
-	return token.SignedString([]byte(s.JWTSecret))
+
+	return token.SignedString(privateKey)
 }
 
 func (s *AuthService) GenerateRefreshToken(userID string, r *http.Request) (string, error) {
 	userAgent := r.UserAgent()
-
-	// Se o server estiver atrás de um proxy, use o seguinte:
 	ipAddress := r.Header.Get("X-Forwarded-For")
 
-	// ipAddress := r.RemoteAddr
+	expirationTime := time.Now().Add(48 * time.Hour) // 2 days
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+	// Load RSA private key from Viper
+	privateKeyPEM := []byte(viper.GetString("JWT_PRIVATE_KEY"))
+	privateKey, err := jwt.ParseRSAPrivateKeyFromPEM(privateKeyPEM)
+	if err != nil {
+		return "", errors.New("failed to parse private key: " + err.Error())
+	}
+
+	// RS256 Refresh Token
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
 		"id":         userID,
 		"user_agent": userAgent,
 		"ip_address": ipAddress,
-		"last_used":  time.Now(),
-		"exp":        time.Now().Add(2 * 24 * time.Hour).Unix(),
+		"last_used":  time.Now().Unix(),
+		"exp":        expirationTime.Unix(),
 	})
-	return token.SignedString([]byte(s.JWTSecret))
+
+	return token.SignedString(privateKey)
 }
 
 func (s *AuthService) FindRefreshToken(userID, tokenStr string) (*models.RefreshToken, error) {
