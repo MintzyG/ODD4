@@ -242,7 +242,7 @@ func (s *AuthService) VerifyUser(user *models.User, token string) error {
 	return nil
 }
 
-func (s *AuthService) Login(user models.UserLogin, r *http.Request) (string, string, error) {
+func (s *AuthService) Login(user models.UserLoginRequest, r *http.Request) (string, string, error) {
 	if user.Email == "" || user.Password == "" {
 		return "", "", errors.New("all fields are required")
 	}

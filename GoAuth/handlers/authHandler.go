@@ -23,11 +23,6 @@ func NewAuthHandler(service *services.AuthService) *AuthHandler {
 	return &AuthHandler{AuthService: service}
 }
 
-type AuthTokensResponse struct {
-	AccessToken  string `json:"access_token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
-	RefreshToken string `json:"refresh_token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
-}
-
 // TODO: ADD ERROR STATE IF MISSING SEND
 // Register godoc
 // @Summary      Register new user and send a verification email
@@ -55,21 +50,16 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var login models.UserLogin
+	var login models.UserLoginRequest
 	copier.Copy(&login, &user)
 
-	var data AuthTokensResponse
+	var data models.AuthTokensResponse
 	if data.AccessToken, data.RefreshToken, err = h.AuthService.Login(login, r); err != nil {
 		response.BadRequest("error trying to login").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
 	response.Created().WithModule("auth").WithData(data).Send(w)
-}
-
-type UserLoginRequest struct {
-	Email    string `json:"email" example:"user@example.com"`
-	Password string `json:"password" example:"password123"`
 }
 
 // Login godoc
@@ -80,26 +70,27 @@ type UserLoginRequest struct {
 // @Tags         auth
 // @Accept       json
 // @Produce      json
-// @Param        request body UserLoginRequest true "User login info"
+// @Param        request body models.UserLoginRequest true "User login info"
 // @Success      200  {object}  NoMessageSuccessResponse{data=AuthTokensResponse}
 // @Failure      400  {object}  AuthStandardErrorResponse
 // @Failure      401  {object}  AuthStandardErrorResponse
 // @Router       /login [post]
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
-	var user models.UserLogin
+	var user models.UserLoginRequest
 	resp := validation.ValidateWith(r, &user)
 	if resp != nil {
 		resp.SendWithContext(r.Context(), w)
 		return
 	}
 
-	acess_token, refresh, err := h.AuthService.Login(user, r)
-	if err != nil {
-		response.Unauthorized().WithMsg("error trying to login").AddTrace(err).WithModule("auth").Send(w)
+	var data models.AuthTokensResponse
+	var err error
+	if data.AccessToken, data.RefreshToken, err = h.AuthService.Login(user, r); err != nil {
+		response.Unauthorized("error trying to login").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
-	response.OK().WithModule("auth").WithData(map[string]string{"access_token": acess_token, "refresh_token": refresh}).Send(w)
+	response.OK("logged in successfully").WithModule("auth").WithData(data).Send(w)
 }
 
 // Logout godoc
@@ -126,15 +117,11 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 	err = h.AuthService.Logout(user.ID, refreshTokenString)
 	if err != nil {
-		response.Unauthorized().WithMsg("error trying to logout").AddTrace(err).WithModule("auth").Send(w)
+		response.BadRequest("error trying to logout").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
-	response.OK().WithMsg("logged out successfully").WithModule("auth").Send(w)
-}
-
-type RevokeTokenRequest struct {
-	Token string `json:"refresh_token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
+	response.OK("logged out successfully").WithModule("auth").Send(w)
 }
 
 // RevokeRefreshToken godoc
@@ -147,7 +134,7 @@ type RevokeTokenRequest struct {
 // @Security     Bearer
 // @Param        Authorization header string true "Bearer {access_token}"
 // @Param        Refresh header string true "Bearer {refresh_token}"
-// @Param        request body RevokeTokenRequest true "Refresh token to revoke"
+// @Param        request body models.RevokeTokenRequest true "Refresh token to revoke"
 // @Success      200  {object}  NoDataSuccessResponse
 // @Failure      400  {object}  AuthStandardErrorResponse
 // @Failure      401  {object}  AuthStandardErrorResponse
@@ -159,28 +146,18 @@ func (h *AuthHandler) RevokeRefreshToken(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	var requestBody RevokeTokenRequest
-	if err := decodeRequestBody(r, &requestBody); err != nil {
-		response.BadRequest().AddTrace(err).WithModule("auth").Send(w)
+	var req models.RevokeTokenRequest
+	if resp := validation.ValidateWith(r, &req); resp != nil {
+		resp.SendWithContext(r.Context(), w)
 		return
 	}
 
-	if requestBody.Token == "" {
-		response.BadRequest().AddTrace("refresh token to be revoked is required").WithModule("auth").Send(w)
+	if err := h.AuthService.RevokeRefreshToken(user.ID, req.Token); err != nil {
+		response.BadRequest("error revoking token").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
-	err = h.AuthService.RevokeRefreshToken(user.ID, requestBody.Token)
-	if err != nil {
-		response.BadRequest().WithMsg("error revoking token").AddTrace(err).WithModule("auth").Send(w)
-		return
-	}
-
-	response.OK().WithMsg("refresh token revoked successfully").WithModule("auth").Send(w)
-}
-
-type VerifyAccountRequest struct {
-	Token string `json:"token" example:"123456"`
+	response.OK("refresh token revoked successfully").WithModule("auth").Send(w)
 }
 
 // VerifyAccount godoc
@@ -204,64 +181,50 @@ func (h *AuthHandler) VerifyAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var requestBody VerifyAccountRequest
-	if err := decodeRequestBody(r, &requestBody); err != nil {
-		response.BadRequest().AddTrace(err).WithModule("auth").Send(w)
+	var req models.VerifyAccountRequest
+	if resp := validation.ValidateWith(r, &req); resp != nil {
+		resp.SendWithContext(r.Context(), w)
 		return
 	}
 
-	if requestBody.Token == "" {
-		response.BadRequest().WithMsg("verification token is required").WithModule("auth").Send(w)
-		return
-	}
-
-	err = h.AuthService.VerifyUser(&user, requestBody.Token)
+	err = h.AuthService.VerifyUser(&user, req.Token)
 	if err != nil {
-		response.BadRequest().WithMsg("error verifying user").AddTrace(err).WithModule("auth").Send(w)
+		response.BadRequest("error verifying user").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
 	refreshHeader := r.Header.Get("Refresh")
 	refreshTokenString := strings.TrimPrefix(refreshHeader, "Bearer ")
-	err = h.AuthService.Logout(user.ID, refreshTokenString)
-	if err != nil {
-		response.BadRequest().WithMsg("error loggin out").AddTrace(err).WithModule("auth").Send(w)
+	if err = h.AuthService.Logout(user.ID, refreshTokenString); err != nil {
+		response.BadRequest("error logging out").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
 	access_token, refresh_token, err := h.AuthService.GenerateTokenPair(user, r)
 	if err != nil {
-		response.BadRequest().WithMsg("error generating token pair").AddTrace(err).WithModule("auth").Send(w)
+		response.BadRequest("error generating token pair").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
 	w.Header().Set("X-New-Access-Token", access_token)
 	w.Header().Set("X-New-Refresh-Token", refresh_token)
 
-	response.OK().WithMsg("account verified").WithModule("auth").Send(w)
-}
-
-type ForgotPasswordRequest struct {
-	Email string `json:"email"`
+	response.OK("account verified").WithModule("auth").Send(w)
 }
 
 func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
-	var req ForgotPasswordRequest
-	if err := decodeRequestBody(r, &req); err != nil {
-		response.BadRequest().AddTrace(err).WithModule("auth").Send(w)
+	var req models.ForgotPasswordRequest
+	if resp := validation.ValidateWith(r, &req); resp != nil {
+		resp.SendWithContext(r.Context(), w)
 		return
 	}
 
 	if err := h.AuthService.InitiatePasswordReset(req.Email); err != nil {
-		response.BadRequest().WithMsg("error initiating password reset").AddTrace(err).WithModule("auth").Send(w)
+		response.BadRequest("error initiating password reset").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
-	response.OK().WithMsg("password reset email sent").WithModule("auth").Send(w)
-}
-
-type ChangePasswordRequest struct {
-	NewPassword string `json:"new_password"`
+	response.OK("password reset email sent").WithModule("auth").Send(w)
 }
 
 // ChangePassword godoc
@@ -282,13 +245,13 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	var secretKey string = viper.GetString("JWT_SECRET")
 	resetToken := r.URL.Query().Get("token")
 	if resetToken == "" {
-		response.BadRequest().WithMsg("missing reset token").WithModule("auth").Send(w)
+		response.BadRequest("missing reset token").WithModule("auth").Send(w)
 		return
 	}
 
-	var req ChangePasswordRequest
-	if err := decodeRequestBody(r, &req); err != nil {
-		response.BadRequest().WithMsg("missing reset token").WithModule("auth").Send(w)
+	var req models.ChangePasswordRequest
+	if resp := validation.ValidateWith(r, &req); resp != nil {
+		resp.SendWithContext(r.Context(), w)
 		return
 	}
 
@@ -298,16 +261,16 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil || !token.Valid || !claims.IsPasswordReset {
-		response.BadRequest().WithMsg("invalid or expired reset token").WithModule("auth").Send(w)
+		response.BadRequest("invalid or expired reset token").WithModule("auth").Send(w)
 		return
 	}
 
 	if err := h.AuthService.ChangePassword(claims.UserID, req.NewPassword); err != nil {
-		response.BadRequest().WithMsg("error changing password").WithModule("auth").Send(w)
+		response.BadRequest("error changing password").WithModule("auth").Send(w)
 		return
 	}
 
-	response.OK().WithMsg("password changed succesfuly").WithModule("auth").Send(w)
+	response.OK("password changed succesfuly").WithModule("auth").Send(w)
 }
 
 // ResendVerificationCode godoc
@@ -331,135 +294,86 @@ func (h *AuthHandler) ResendVerificationCode(w http.ResponseWriter, r *http.Requ
 	}
 
 	if err := h.AuthService.ResendVerificationCode(&user); err != nil {
-		response.BadRequest().WithMsg("error resending verification code").AddTrace(err).WithModule("auth").Send(w)
+		response.BadRequest("error resending verification code").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
-	response.OK().WithMsg("verification code sent").WithModule("auth").Send(w)
+	response.OK("verification code sent").WithModule("auth").Send(w)
 }
 
-// type SwitchEventCreatorStatusRequest struct {
-// 	Email string `json:"email" example:"user@example.com"`
-// }
-//
-// // SwitchEventCreatorStatus godoc
-// // @Summary      Toggle event creator status
-// // @Description  Switches a user's event creator status (enables/disables ability to create events). Only available to super users.
-// // @Tags         auth
-// // @Accept       json
-// // @Produce      json
-// // @Security     Bearer
-// // @Param        Authorization header string true "Bearer {access_token}"
-// // @Param        Refresh header string true "Bearer {refresh_token}"
-// // @Param        request body SwitchEventCreatorStatusRequest true "Target user email"
-// // @Success      200  {object}  NoDataSuccessResponse
-// // @Failure      400  {object}  AuthStandardErrorResponse
-// // @Failure      401  {object}  AuthStandardErrorResponse
-// // @Failure      403  {object}  AuthStandardErrorResponse
-// // @Router       /switch-event-creator-status [post]
-// func (h *AuthHandler) SwitchEventCreatorStatus(w http.ResponseWriter, r *http.Request) {
-// 	user, err := getUserFromContext(h.AuthService.AuthRepo.FindUserByID, r)
-// 	if err != nil {
-// 		HandleErrMsg("error getting user", err, w).Stack("auth").BadRequest()
-// 		return
-// 	}
+// SwitchEventCreatorStatus godoc
+// @Summary      Toggle event creator status
+// @Description  Switches a user's event creator status (enables/disables ability to create events). Only available to super users.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Security     Bearer
+// @Param        Authorization header string true "Bearer {access_token}"
+// @Param        Refresh header string true "Bearer {refresh_token}"
+// @Param        request body models.SwitchEventCreatorStatusRequest true "Target user email"
+// @Success      200  {object}  NoDataSuccessResponse
+// @Failure      400  {object}  AuthStandardErrorResponse
+// @Failure      401  {object}  AuthStandardErrorResponse
+// @Failure      403  {object}  AuthStandardErrorResponse
+// @Router       /switch-event-creator-status [post]
+func (h *AuthHandler) SwitchEventCreatorStatus(w http.ResponseWriter, r *http.Request) {
+	user, err := getUserFromContext(h.AuthService.AuthRepo.FindUserByID, r)
+	if err != nil {
+		response.BadRequest().AddTrace(ae.ErrContext, err).WithModule("auth").Send(w)
+		return
+	}
 
-// 	var reqBody SwitchEventCreatorStatusRequest
-// 	if err := decodeRequestBody(r, &reqBody); err != nil {
-// 		BadRequestError(w, err, "auth")
-// 		return
-// 	}
+	var req models.SwitchEventCreatorStatusRequest
+	if resp := validation.ValidateWith(r, &req); resp != nil {
+		resp.SendWithContext(r.Context(), w)
+		return
+	}
 
-// 	if reqBody.Email == "" {
-// 		BadRequestError(w, NewErr("email is required"), "auth")
-// 		return
-// 	}
+	if err := h.AuthService.SwitchEventCreatorStatus(user, req.Email); err != nil {
+		if strings.Contains(err.Error(), "only superusers") {
+			response.Forbidden("user lacks permission for this action").WithModule("auth").Send(w)
+			return
+		}
+		response.BadGateway("error switching event creator status").AddTrace(err).WithModule("auth").Send(w)
+		return
+	}
 
-// 	if err := h.AuthService.SwitchEventCreatorStatus(user, reqBody.Email); err != nil {
-// 		if strings.Contains(err.Error(), "only superusers") {
-// 			ForbiddenError(w, err, "auth")
-// 			return
-// 		}
-// 		HandleErrMsg("error switching event creator status", err, w).Stack("auth").BadRequest()
-// 		return
-// 	}
-
-// 	handleSuccess(w, nil, "event creator status switched successfully", http.StatusOK)
-// }
-
-// type ChangeUserNameRequest struct {
-// 	Name     string `json:"name"`
-// 	LastName string `json:"last_name"`
-// }
-
-// // ChangeUserName godoc
-// // @Summary      Change user name
-// // @Description  Updates the authenticated user's first and last name
-// // @Tags         auth
-// // @Accept       json
-// // @Produce      json
-// // @Security     Bearer
-// // @Param        Authorization header string true "Bearer {access_token}"
-// // @Param        Refresh header string true "Bearer {refresh_token}"
-// // @Param        request body ChangeUserNameRequest true "New name information"
-// // @Success      200  {object}  NoDataSuccessResponse
-// // @Failure      400  {object}  AuthStandardErrorResponse
-// // @Failure      401  {object}  AuthStandardErrorResponse
-// // @Router       /change-name [post]
-// func (h *AuthHandler) ChangeUserName(w http.ResponseWriter, r *http.Request) {
-// 	user, err := getUserFromContext(h.AuthService.AuthRepo.FindUserByID, r)
-// 	if err != nil {
-// 		HandleErrMsg("error getting user", err, w).Stack("auth").BadRequest()
-// 		return
-// 	}
-
-// 	var reqBody ChangeUserNameRequest
-// 	if err := decodeRequestBody(r, &reqBody); err != nil {
-// 		BadRequestError(w, err, "auth")
-// 		return
-// 	}
-
-// 	if reqBody.Name == "" {
-// 		BadRequestError(w, NewErr("name is required"), "auth")
-// 		return
-// 	}
-
-// 	if reqBody.LastName == "" {
-// 		BadRequestError(w, NewErr("last name is required"), "auth")
-// 		return
-// 	}
-
-// 	if err := h.AuthService.ChangeUserName(user, reqBody.Name, reqBody.LastName); err != nil {
-// 		HandleErrMsg("error changing user name", err, w).Stack("auth").BadRequest()
-// 		return
-// 	}
-
-// 	handleSuccess(w, nil, "user name changed successfully", http.StatusOK)
-// }
-
-type UserResponse struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	LastName       string `json:"last_name"`
-	Email          string `json:"email"`
-	IsVerified     bool   `json:"is_verified"`
-	IsEventCreator bool   `json:"is_event_creator"`
-	IsSuperUser    bool   `json:"is_super_user"`
-	IsUenf         bool   `json:"is_uenf"`
-	UenfSemester   int    `json:"uenf_semester"`
-	CreatedAt      string `json:"created_at"`
+	response.OK("event creator status switched successfully").WithModule("auth").Send(w)
 }
 
-type GetUsersResponse struct {
-	Users      []UserResponse `json:"users"`
-	Pagination *struct {
-		Page       int   `json:"page"`
-		Limit      int   `json:"limit"`
-		Total      int64 `json:"total"`
-		TotalPages int   `json:"total_pages"`
-		HasNext    bool  `json:"has_next"`
-		HasPrev    bool  `json:"has_prev"`
-	} `json:"pagination,omitempty"`
+// ChangeUserName godoc
+// @Summary      Change user name
+// @Description  Updates the authenticated user's first and last name
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Security     Bearer
+// @Param        Authorization header string true "Bearer {access_token}"
+// @Param        Refresh header string true "Bearer {refresh_token}"
+// @Param        request body models.ChangeUserNameRequest true "New name information"
+// @Success      200  {object}  NoDataSuccessResponse
+// @Failure      400  {object}  AuthStandardErrorResponse
+// @Failure      401  {object}  AuthStandardErrorResponse
+// @Router       /change-name [post]
+func (h *AuthHandler) ChangeUserName(w http.ResponseWriter, r *http.Request) {
+	user, err := getUserFromContext(h.AuthService.AuthRepo.FindUserByID, r)
+	if err != nil {
+		response.BadRequest().AddTrace(ae.ErrContext, err).WithModule("auth").Send(w)
+		return
+	}
+
+	var req models.ChangeUserNameRequest
+	if resp := validation.ValidateWith(r, &req); resp != nil {
+		resp.SendWithContext(r.Context(), w)
+		return
+	}
+
+	if err := h.AuthService.ChangeUserName(user, req.Name, req.LastName); err != nil {
+		response.BadRequest("error changing user name").AddTrace(err).WithModule("auth").Send(w)
+		return
+	}
+
+	response.OK("user name changed successfully").WithModule("auth").Send(w)
 }
 
 // GetUsers godoc
@@ -484,7 +398,7 @@ func (h *AuthHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
 	if userID := r.URL.Query().Get("id"); userID != "" {
 		targetUser, err := h.AuthService.GetUserByID(userID)
 		if err != nil {
-			response.NotFound().WithMsg("user not found").AddTrace(err).WithModule("auth").Send(w)
+			response.NotFound("user not found").AddTrace(err).WithModule("auth").Send(w)
 			return
 		}
 
@@ -516,7 +430,7 @@ func (h *AuthHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
 	if pageStr != "" || limitStr != "" {
 		users, total, err := h.AuthService.GetUsers(page, limit)
 		if err != nil {
-			response.BadRequest().WithMsg("error retrieving users").AddTrace(err).WithModule("auth").Send(w)
+			response.BadRequest("error retrieving users").AddTrace(err).WithModule("auth").Send(w)
 			return
 		}
 
@@ -553,11 +467,13 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 	refreshToken := strings.TrimPrefix(refreshHeader, "Bearer ")
 
-	access, refresh, err := h.AuthService.RefreshTokens(refreshToken, r)
+	var data models.AuthTokensResponse
+	var err error
+	data.AccessToken, data.RefreshToken, err = h.AuthService.RefreshTokens(refreshToken, r)
 	if err != nil {
 		response.Unauthorized().AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
-	response.OK().WithData(map[string]string{"access_token": access, "refresh_token": refresh}).WithModule("auth").Send(w)
+	response.OK().WithData(data).WithModule("auth").Send(w)
 }

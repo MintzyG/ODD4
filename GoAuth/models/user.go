@@ -54,9 +54,39 @@ type UserRegisterRequest struct {
 	Password string `json:"password" validate:"required,min=8,passwd"`
 }
 
-type UserLogin struct {
+type UserLoginRequest struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required,min=8,passwd"`
+}
+
+type RevokeTokenRequest struct {
+	Token string `json:"refresh_token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." validate:"required,jwt"`
+}
+
+type VerifyAccountRequest struct {
+	Token string `json:"token" example:"123456" validate:"required,len=6"`
+}
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
+type ChangePasswordRequest struct {
+	NewPassword string `json:"new_password" validate:"required,passwd"`
+}
+
+type SwitchEventCreatorStatusRequest struct {
+	Email string `json:"email" example:"user@example.com" validate:"required,email"`
+}
+
+type ChangeUserNameRequest struct {
+	Name     string `json:"name" validate:"required,min=2,max=50"`
+	LastName string `json:"last_name" validate:"required,min=2,max=100"`
+}
+
+type AuthTokensResponse struct {
+	AccessToken  string `json:"access_token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
+	RefreshToken string `json:"refresh_token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
 }
 
 type PasswordResetClaims struct {
