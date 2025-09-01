@@ -8,14 +8,12 @@ import (
 )
 
 type User struct {
-	ID           string   `gorm:"type:varchar(36);primaryKey;" json:"id"`
-	Name         string   `gorm:"not null" json:"name"`
-	LastName     string   `gorm:"not null" json:"last_name"`
-	Email        string   `gorm:"unique;not null" json:"email"`
-	IsVerified   bool     `gorm:"default:false" json:"is_verified"`
-	UserPass     UserPass `gorm:"foreignKey:ID;references:ID;constraint:OnDelete:CASCADE" json:"-"`
-	IsUenf       bool     `json:"is_uenf"`
-	UenfSemester int      `json:"uenf_semester"`
+	ID         string `gorm:"type:varchar(36);primaryKey;" json:"id"`
+	Name       string `gorm:"not null" json:"name"`
+	LastName   string `gorm:"not null" json:"last_name"`
+	Email      string `gorm:"unique;not null" json:"email"`
+	Password   string `gorm:"not null" json:"-"`
+	IsVerified bool   `gorm:"default:false" json:"is_verified"`
 
 	CreatedAt time.Time      `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
@@ -25,21 +23,22 @@ type User struct {
 	IsSuperUser    bool `gorm:"default:false" json:"is_super_user"`
 }
 
+type UserDTO struct {
+	ID         string `gorm:"type:varchar(36);primaryKey;" json:"id"`
+	Name       string `gorm:"not null" json:"name"`
+	LastName   string `gorm:"not null" json:"last_name"`
+	Email      string `gorm:"unique;not null" json:"email"`
+	IsVerified bool   `gorm:"default:false" json:"is_verified"`
+
+	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+
+	IsEventCreator bool `gorm:"default:false" json:"is_event_creator"`
+	IsSuperUser    bool `gorm:"default:false" json:"is_super_user"`
+}
+
 func (User) TableName() string {
 	return "users"
-}
-
-type UserPass struct {
-	ID       string `gorm:"type:varchar(36);primaryKey" json:"id"`
-	Password string `gorm:"not null" json:"password"`
-
-	CreatedAt time.Time      `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
-	DeletedAt gorm.DeletedAt `gorm:"autoDeleteTime" json:"deleted_at,omitempty"`
-}
-
-func (UserPass) TableName() string {
-	return "user_pass"
 }
 
 type RefreshToken struct {
@@ -48,14 +47,11 @@ type RefreshToken struct {
 	TokenStr string `gorm:"type:varchar(1024);" json:"token_str"`
 }
 
-type UserRegister struct {
-	gorm.Model
-	Name         string `gorm:"not null"`
-	LastName     string `gorm:"not null" json:"last_name"`
-	Email        string `gorm:"unique;not null"`
-	Password     string `gorm:"not null"`
-	IsUenf       bool   `json:"is_uenf"`
-	UenfSemester int    `json:"uenf_semester"`
+type UserRegisterRequest struct {
+	Name     string `json:"name" validate:"required,min=2,max=50"`
+	LastName string `json:"last_name" validate:"required,min=2,max=50"`
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required,min=8,passwd"`
 }
 
 type UserLogin struct {

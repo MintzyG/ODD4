@@ -4,12 +4,14 @@ import (
 	ae "GoAuth/erorrs"
 	"GoAuth/models"
 	"GoAuth/services"
+	"GoAuth/validation"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/MintzyG/GoResponse/response"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jinzhu/copier"
 	"github.com/spf13/viper"
 )
 
@@ -26,13 +28,6 @@ type AuthTokensResponse struct {
 	RefreshToken string `json:"refresh_token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
 }
 
-type UserRegisterRequest struct {
-	Email    string `json:"email" example:"user@example.com"`
-	Password string `json:"password" example:"password123"`
-	Name     string `json:"name" example:"John"`
-	LastName string `json:"last_name" example:"Doe"`
-}
-
 // Register godoc
 // @Summary      Register new user and send a verification email
 // @Description  Register a new user in the system, generates a verification code that is stored
@@ -46,26 +41,27 @@ type UserRegisterRequest struct {
 // @Failure      401  {object}  AuthStandardErrorResponse
 // @Router       /register [post]
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
-	var user models.UserRegister
-	if err := decodeRequestBody(r, &user); err != nil {
-		response.BadRequest().WithModule("auth").AddTrace(err).Send(w)
+	var user models.UserRegisterRequest
+	resp := validation.ValidateWith(r, &user)
+	if resp != nil {
+		resp.SendWithContext(r.Context(), w)
 		return
 	}
 
-	err := h.AuthService.Register(user.Email, user.Password, user.Name, user.LastName, user.IsUenf, user.UenfSemester)
-	if err != nil {
-		response.BadRequest().WithMsg("error registering user").AddTrace(err).WithModule("auth").Send(w)
+	var err error
+	if err = h.AuthService.Register(user.Email, user.Password, user.Name, user.LastName); err != nil {
+		response.BadRequest("error registering user").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
-	acess_token, refresh, err := h.AuthService.Login(user.Email, user.Password, r)
-	if err != nil {
-		response.BadRequest().WithMsg("error trying to login").AddTrace(err).WithModule("auth").Send(w)
+	var data AuthTokensResponse
+	if data.AccessToken, data.RefreshToken, err = h.AuthService.Login(user.Email, user.Password, r); err != nil {
+		response.BadRequest("error trying to login").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
 	// TODO: ADD ERROR STATE IF MISSING SEND
-	response.Created().WithModule("auth").WithData(map[string]string{"access_token": acess_token, "refresh_token": refresh}).Send(w)
+	response.Created().WithModule("auth").WithData(data).Send(w)
 }
 
 type UserLoginRequest struct {
@@ -488,20 +484,10 @@ func (h *AuthHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		userResponse := UserResponse{
-			ID:             targetUser.ID,
-			Name:           targetUser.Name,
-			LastName:       targetUser.LastName,
-			Email:          targetUser.Email,
-			IsVerified:     targetUser.IsVerified,
-			IsEventCreator: targetUser.IsEventCreator,
-			IsSuperUser:    targetUser.IsSuperUser,
-			IsUenf:         targetUser.IsUenf,
-			UenfSemester:   targetUser.UenfSemester,
-			CreatedAt:      targetUser.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		}
+		var userDTO models.UserDTO
+		copier.Copy(&userDTO, &targetUser)
 
-		response.OK().WithModule("auth").WithData(userResponse).Send(w)
+		response.OK().WithModule("auth").WithData(userDTO).Send(w)
 		return
 	}
 
@@ -530,20 +516,9 @@ func (h *AuthHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		userResponses := make([]UserResponse, len(users))
+		userResponses := make([]models.UserDTO, len(users))
 		for i, u := range users {
-			userResponses[i] = UserResponse{
-				ID:             u.ID,
-				Name:           u.Name,
-				LastName:       u.LastName,
-				Email:          u.Email,
-				IsVerified:     u.IsVerified,
-				IsEventCreator: u.IsEventCreator,
-				IsSuperUser:    u.IsSuperUser,
-				IsUenf:         u.IsUenf,
-				UenfSemester:   u.UenfSemester,
-				CreatedAt:      u.CreatedAt.Format("2006-01-02T15:04:05Z"),
-			}
+			copier.Copy(&(userResponses[i]), &u)
 		}
 
 		totalPages := int((total + int64(limit) - 1) / int64(limit))
@@ -560,7 +535,10 @@ func (h *AuthHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
 		response.InternalServerError("coudl'nt get all users").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
-	response.OK("retrieved all users").WithData(users).WithModule("auth").Send(w)
+
+	var userDTO []models.UserDTO
+	copier.Copy(&userDTO, &users)
+	response.OK("retrieved all users").WithData(userDTO).WithModule("auth").Send(w)
 }
 
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {

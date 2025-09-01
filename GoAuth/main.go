@@ -25,7 +25,6 @@ func Migrate() {
 
 	err := DB.AutoMigrate(
 		&models.User{},
-		&models.UserPass{},
 		&models.UserVerification{},
 		&models.AdminStatus{},
 		&models.RefreshToken{},

@@ -83,15 +83,12 @@ func (r *AuthRepo) CreateSuperUser() {
 
 	userID := uuid.New().String()
 	MasterUser := &models.User{
-		ID:         userID,
-		Name:       "Master",
-		LastName:   "User",
-		Email:      viper.GetString("SCTI_EMAIL"),
-		IsVerified: true,
-		UserPass: models.UserPass{
-			ID:       userID,
-			Password: string(hashedPassword),
-		},
+		ID:             userID,
+		Name:           "Super",
+		LastName:       "User",
+		Email:          viper.GetString("SCTI_EMAIL"),
+		IsVerified:     true,
+		Password:       string(hashedPassword),
 		IsEventCreator: true,
 		IsSuperUser:    true,
 	}
@@ -117,7 +114,6 @@ func (r *AuthRepo) UserExists(email string) (bool, error) {
 func (r *AuthRepo) FindUserByEmail(email string) (models.User, error) {
 	var user models.User
 	err := r.DB.
-		Preload("UserPass").
 		Where("email = ?", email).
 		First(&user).Error
 
@@ -130,7 +126,6 @@ func (r *AuthRepo) FindUserByEmail(email string) (models.User, error) {
 func (r *AuthRepo) FindUserByID(id string) (models.User, error) {
 	var user models.User
 	err := r.DB.
-		Preload("UserPass").
 		Where("id = ?", id).
 		First(&user).Error
 
@@ -199,22 +194,6 @@ func (r *AuthRepo) GetAllAdminStatusFromUser(userID string) ([]models.AdminStatu
 		return nil, err
 	}
 	return adminStatuses, nil
-}
-
-func (r *AuthRepo) UpdateUserPassword(userID string, hashedPassword string) error {
-	result := r.DB.Model(&models.UserPass{}).
-		Where("id = ?", userID).
-		Update("password", hashedPassword)
-
-	if result.Error != nil {
-		return result.Error
-	}
-
-	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-
-	return nil
 }
 
 func (r *AuthRepo) ChangeUserName(userID string, name, lastName string) error {

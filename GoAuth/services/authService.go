@@ -3,7 +3,7 @@ package services
 import (
 	"GoAuth/models"
 	"GoAuth/repos"
-	"GoAuth/utilities"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +13,7 @@ import (
 	"net/smtp"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
@@ -38,19 +39,46 @@ func NewAuthService(repo *repos.AuthRepo, secret string) *AuthService {
 	}
 }
 
-func (s *AuthService) Register(email, password, name, last_name string, isUenf bool, uenfSemester int) error {
-	if email == "" || password == "" || name == "" || last_name == "" {
-		return errors.New("all fields are required")
+func GenerateVerificationCode() int {
+	min := 100000
+	max := 999999
+
+	randomNumber, err := cryptoRand(min, max)
+	if err != nil {
+
+	}
+	return randomNumber
+}
+
+func cryptoRand(min, max int) (int, error) {
+	delta := max - min + 1
+
+	buf := make([]byte, 4)
+	_, err := rand.Read(buf)
+	if err != nil {
+		return 0, err
 	}
 
-	if uenfSemester < 1 || uenfSemester > 10 {
-		return errors.New("uenf semester must be between 1 and 10, inclusive")
+	randomUint32 := uint32(buf[0]) | uint32(buf[1])<<8 | uint32(buf[2])<<16 | uint32(buf[3])<<24
+
+	return min + int(randomUint32%uint32(delta)), nil
+}
+
+func IsValidEmail(email string) bool {
+	const emailRegex = `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
+	re := regexp.MustCompile(emailRegex)
+	return re.MatchString(email)
+}
+
+func (s *AuthService) Register(email, password, name, last_name string) error {
+	if email == "" || password == "" || name == "" || last_name == "" {
+		return errors.New("all fields are required")
 	}
 
 	email = strings.TrimSpace(strings.ToLower(email))
 
 	// Regex to check email
-	if !utilities.IsValidEmail(email) {
+	if !IsValidEmail(email) {
 		return errors.New("invalid email format")
 	}
 
@@ -70,24 +98,19 @@ func (s *AuthService) Register(email, password, name, last_name string, isUenf b
 
 	userID := uuid.New().String()
 	user := &models.User{
-		ID:           userID,
-		Name:         name,
-		LastName:     last_name,
-		Email:        email,
-		IsVerified:   false,
-		IsUenf:       isUenf,
-		UenfSemester: uenfSemester,
-		UserPass: models.UserPass{
-			ID:       userID,
-			Password: string(hashedPassword),
-		},
+		ID:         userID,
+		Name:       name,
+		LastName:   last_name,
+		Email:      email,
+		IsVerified: false,
+		Password:   string(hashedPassword),
 	}
 
 	if err := s.AuthRepo.CreateUser(user); err != nil {
 		return err
 	}
 
-	verificationNumber := utilities.GenerateVerificationCode()
+	verificationNumber := GenerateVerificationCode()
 
 	if err := s.AuthRepo.CreateUserVerification(user.ID, verificationNumber); err != nil {
 		return err
@@ -231,7 +254,7 @@ func (s *AuthService) Login(email, password string, r *http.Request) (string, st
 		return "", "", err
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.UserPass.Password), []byte(password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
 		return "", "", errors.New("invalid password")
 	}
 
@@ -498,7 +521,13 @@ func (s *AuthService) ChangePassword(userID string, newPassword string) error {
 		return err
 	}
 
-	return s.AuthRepo.UpdateUserPassword(userID, string(hashedPassword))
+	user, err := s.AuthRepo.FindUserByID(userID)
+	if err != nil {
+		return errors.New("coudln't find user")
+	}
+
+	user.Password = string(hashedPassword)
+	return s.AuthRepo.UpdateUser(&user)
 }
 
 // SwitchEventCreatorStatus toggles the event creator status for a user
@@ -538,7 +567,7 @@ func (s *AuthService) ChangeUserName(user models.User, name, lastName string) er
 }
 
 func (s *AuthService) ResendVerificationCode(user *models.User) error {
-	verificationNumber := utilities.GenerateVerificationCode()
+	verificationNumber := GenerateVerificationCode()
 	if err := s.AuthRepo.UpdateUserVerification(user.ID, verificationNumber); err != nil {
 		return err
 	}
