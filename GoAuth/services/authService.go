@@ -70,19 +70,19 @@ func IsValidEmail(email string) bool {
 	return re.MatchString(email)
 }
 
-func (s *AuthService) Register(email, password, name, last_name string) error {
-	if email == "" || password == "" || name == "" || last_name == "" {
+func (s *AuthService) Register(user models.UserRegisterRequest) error {
+	if user.Email == "" || user.Password == "" || user.Name == "" || user.LastName == "" {
 		return errors.New("all fields are required")
 	}
 
-	email = strings.TrimSpace(strings.ToLower(email))
+	user.Email = strings.TrimSpace(strings.ToLower(user.Email))
 
 	// Regex to check email
-	if !IsValidEmail(email) {
+	if !IsValidEmail(user.Email) {
 		return errors.New("invalid email format")
 	}
 
-	exists, err := s.AuthRepo.UserExists(email)
+	exists, err := s.AuthRepo.UserExists(user.Email)
 	if err != nil {
 		return err
 	}
@@ -91,35 +91,35 @@ func (s *AuthService) Register(email, password, name, last_name string) error {
 		return errors.New("user already exists")
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
 
 	userID := uuid.New().String()
-	user := &models.User{
+	u := &models.User{
 		ID:         userID,
-		Name:       name,
-		LastName:   last_name,
-		Email:      email,
+		Name:       user.Name,
+		LastName:   user.LastName,
+		Email:      user.Email,
 		IsVerified: false,
 		Password:   string(hashedPassword),
 	}
 
-	if err := s.AuthRepo.CreateUser(user); err != nil {
+	if err := s.AuthRepo.CreateUser(u); err != nil {
 		return err
 	}
 
 	verificationNumber := GenerateVerificationCode()
 
-	if err := s.AuthRepo.CreateUserVerification(user.ID, verificationNumber); err != nil {
+	if err := s.AuthRepo.CreateUserVerification(u.ID, verificationNumber); err != nil {
 		return err
 	}
 
 	if viper.GetString("TEST_MODE") != "true" {
 		go func() {
-			if err := s.SendVerificationEmail(user, verificationNumber); err != nil {
-				log.Printf("Failed to send verification email to %s: %v", user.Email, err)
+			if err := s.SendVerificationEmail(u, verificationNumber); err != nil {
+				log.Printf("Failed to send verification email to %s: %v", u.Email, err)
 			}
 		}()
 	}
@@ -242,33 +242,33 @@ func (s *AuthService) VerifyUser(user *models.User, token string) error {
 	return nil
 }
 
-func (s *AuthService) Login(email, password string, r *http.Request) (string, string, error) {
-	if email == "" || password == "" {
+func (s *AuthService) Login(user models.UserLogin, r *http.Request) (string, string, error) {
+	if user.Email == "" || user.Password == "" {
 		return "", "", errors.New("all fields are required")
 	}
 
-	email = strings.TrimSpace(strings.ToLower(email))
+	user.Email = strings.TrimSpace(strings.ToLower(user.Email))
 
-	user, err := s.AuthRepo.FindUserByEmail(email)
+	u, err := s.AuthRepo.FindUserByEmail(user.Email)
 	if err != nil {
 		return "", "", err
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(user.Password)); err != nil {
 		return "", "", errors.New("invalid password")
 	}
 
-	accessToken, err := s.GenerateAccessToken(user)
+	accessToken, err := s.GenerateAccessToken(u)
 	if err != nil {
 		return "", "", err
 	}
 
-	refreshToken, err := s.GenerateRefreshToken(user.ID, r)
+	refreshToken, err := s.GenerateRefreshToken(u.ID, r)
 	if err != nil {
 		return "", "", err
 	}
 
-	if err := s.AuthRepo.CreateRefreshToken(user.ID, refreshToken); err != nil {
+	if err := s.AuthRepo.CreateRefreshToken(u.ID, refreshToken); err != nil {
 		return "", "", err
 	}
 

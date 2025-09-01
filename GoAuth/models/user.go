@@ -55,9 +55,8 @@ type UserRegisterRequest struct {
 }
 
 type UserLogin struct {
-	gorm.Model
-	Email    string `gorm:"unique;not null"`
-	Password string `gorm:"not null"`
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required,min=8,passwd"`
 }
 
 type PasswordResetClaims struct {

@@ -28,6 +28,7 @@ type AuthTokensResponse struct {
 	RefreshToken string `json:"refresh_token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
 }
 
+// TODO: ADD ERROR STATE IF MISSING SEND
 // Register godoc
 // @Summary      Register new user and send a verification email
 // @Description  Register a new user in the system, generates a verification code that is stored
@@ -49,18 +50,20 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var err error
-	if err = h.AuthService.Register(user.Email, user.Password, user.Name, user.LastName); err != nil {
+	if err = h.AuthService.Register(user); err != nil {
 		response.BadRequest("error registering user").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
+	var login models.UserLogin
+	copier.Copy(&login, &user)
+
 	var data AuthTokensResponse
-	if data.AccessToken, data.RefreshToken, err = h.AuthService.Login(user.Email, user.Password, r); err != nil {
+	if data.AccessToken, data.RefreshToken, err = h.AuthService.Login(login, r); err != nil {
 		response.BadRequest("error trying to login").AddTrace(err).WithModule("auth").Send(w)
 		return
 	}
 
-	// TODO: ADD ERROR STATE IF MISSING SEND
 	response.Created().WithModule("auth").WithData(data).Send(w)
 }
 
@@ -84,12 +87,13 @@ type UserLoginRequest struct {
 // @Router       /login [post]
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var user models.UserLogin
-	if err := decodeRequestBody(r, &user); err != nil {
-		response.BadRequest().AddTrace(err).WithModule("auth").Send(w)
+	resp := validation.ValidateWith(r, &user)
+	if resp != nil {
+		resp.SendWithContext(r.Context(), w)
 		return
 	}
 
-	acess_token, refresh, err := h.AuthService.Login(user.Email, user.Password, r)
+	acess_token, refresh, err := h.AuthService.Login(user, r)
 	if err != nil {
 		response.Unauthorized().WithMsg("error trying to login").AddTrace(err).WithModule("auth").Send(w)
 		return
